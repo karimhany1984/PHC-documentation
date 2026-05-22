@@ -1,9 +1,8 @@
-const CACHE_NAME='hospital-kpi-v2';
+const CACHE_NAME='hospital-kpi-v3';
 const BASE_URL=self.location.pathname.replace(/service-worker\.js$/,'');
 const STATIC_ASSETS=[
-  BASE_URL,BASE_URL+'index.html',BASE_URL+'app.js',
-  BASE_URL+'manifest.json',
-  'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+  BASE_URL,BASE_URL+'index.html',BASE_URL+'app.js',BASE_URL+'manifest.json',
+  'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js'
 ];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(STATIC_ASSETS)).then(()=>self.skipWaiting()));
