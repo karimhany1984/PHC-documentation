@@ -68,6 +68,7 @@ function buildForm(){
       '</div><div class="hospitals-grid">';
     HOSPITALS.forEach((hosp,hIdx)=>{
       const hd=ind.hospitals[hIdx]||{},bk=idx+'_'+hIdx;
+      // Added notes input back - only shows saved user notes, not Excel formula values
       h+='<div class="hospital-box"><div class="hospital-name">'+hosp+'</div>'+
         '<div class="input-group"><label>قيمة البسط</label>'+
         '<input type="number" class="hospital-input" data-key="'+bk+'_num" data-row="'+idx+'" data-hosp="'+hIdx+'" data-type="num" '+
@@ -77,7 +78,10 @@ function buildForm(){
         'value="'+(sd[bk+'_den']||'')+'" onchange="updateResult(this)" placeholder="0"></div>'+
         '<div class="input-group"><label>ناتج المؤشر (يتم حسابه تلقائياً)</label>'+
         '<input type="text" class="hospital-input result-input" data-key="'+bk+'_result" data-row="'+idx+'" data-hosp="'+hIdx+'" data-type="result" '+
-        'value="'+(sd[bk+'_result']||'')+'" placeholder="0.00" readonly></div></div>';
+        'value="'+(sd[bk+'_result']||'')+'" placeholder="0.00" readonly></div>'+
+        '<div class="input-group"><label>الملاحظات</label>'+
+        '<input type="text" class="hospital-input" data-key="'+bk+'_notes" data-row="'+idx+'" data-hosp="'+hIdx+'" data-type="notes" '+
+        'value="'+(sd[bk+'_notes']||'')+'" onchange="autoSave()" placeholder="ملاحظات..."></div></div>';
     });
     h+='</div>';
     if(ind.has_sub_items&&ind.sub_items.length>0){
@@ -95,7 +99,10 @@ function buildForm(){
             'value="'+(sd[sk+'_den']||'')+'" onchange="updateResult(this)" placeholder="0"></div>'+
             '<div class="input-group"><label>ناتج المؤشر (يتم حسابه تلقائياً)</label>'+
             '<input type="text" class="hospital-input result-input" data-key="'+sk+'_result" data-row="'+idx+'_sub'+sIdx+'" data-hosp="'+hIdx+'" data-type="result" '+
-            'value="'+(sd[sk+'_result']||'')+'" placeholder="0.00" readonly></div></div>';
+            'value="'+(sd[sk+'_result']||'')+'" placeholder="0.00" readonly></div>'+
+            '<div class="input-group"><label>الملاحظات</label>'+
+            '<input type="text" class="hospital-input" data-key="'+sk+'_notes" data-row="'+idx+'_sub'+sIdx+'" data-hosp="'+hIdx+'" data-type="notes" '+
+            'value="'+(sd[sk+'_notes']||'')+'" onchange="autoSave()" placeholder="ملاحظات..."></div></div>';
         });
         h+='</div></div>';
       });
@@ -113,35 +120,34 @@ function exportExcel(){
     const bs=atob(TEMPLATE_B64);
     const bytes=new Uint8Array(bs.length);
     for(let i=0;i<bs.length;i++)bytes[i]=bs.charCodeAt(i);
-    // CRITICAL: cellFormula:true preserves formulas, cellStyles:true preserves formatting
     const wb=XLSX.read(bytes.buffer,{type:'array',cellStyles:true,cellFormula:true,cellNF:true});
     const ws=wb.Sheets['مستشفى '];
     let er=3;
-    // Only write to NUMERATOR and DENOMINATOR columns
-    // RESULT (K,O,S,W,AA,AE) and NOTES (L,P,T,X,AB,AF) have FORMULAS - DO NOT OVERWRITE!
     const hMap=[
-      {num:'I',den:'J'},
-      {num:'M',den:'N'},
-      {num:'Q',den:'R'},
-      {num:'U',den:'V'},
-      {num:'Y',den:'Z'},
-      {num:'AC',den:'AD'}
+      {num:'I',den:'J',notes:'L'},
+      {num:'M',den:'N',notes:'P'},
+      {num:'Q',den:'R',notes:'T'},
+      {num:'U',den:'V',notes:'X'},
+      {num:'Y',den:'Z',notes:'AB'},
+      {num:'AC',den:'AD',notes:'AF'}
     ];
     INDICATORS.forEach((ind,idx)=>{
       hMap.forEach((hm,hIdx)=>{
         const bk=idx+'_'+hIdx;
-        const nv=data[bk+'_num'],dv=data[bk+'_den'];
+        const nv=data[bk+'_num'],dv=data[bk+'_den'],nv2=data[bk+'_notes'];
         if(nv!==undefined&&nv!==''){if(!ws[hm.num+er])ws[hm.num+er]={};ws[hm.num+er].v=parseFloat(nv)||0;ws[hm.num+er].t='n';}
         if(dv!==undefined&&dv!==''){if(!ws[hm.den+er])ws[hm.den+er]={};ws[hm.den+er].v=parseFloat(dv)||0;ws[hm.den+er].t='n';}
+        if(nv2!==undefined&&nv2!==''){if(!ws[hm.notes+er])ws[hm.notes+er]={};ws[hm.notes+er].v=nv2;ws[hm.notes+er].t='s';}
       });
       er++;
       if(ind.has_sub_items){
         ind.sub_items.forEach((sub,sIdx)=>{
           hMap.forEach((hm,hIdx)=>{
             const sk=idx+'_sub'+sIdx+'_'+hIdx;
-            const nv=data[sk+'_num'],dv=data[sk+'_den'];
+            const nv=data[sk+'_num'],dv=data[sk+'_den'],nv2=data[sk+'_notes'];
             if(nv!==undefined&&nv!==''){if(!ws[hm.num+er])ws[hm.num+er]={};ws[hm.num+er].v=parseFloat(nv)||0;ws[hm.num+er].t='n';}
             if(dv!==undefined&&dv!==''){if(!ws[hm.den+er])ws[hm.den+er]={};ws[hm.den+er].v=parseFloat(dv)||0;ws[hm.den+er].t='n';}
+            if(nv2!==undefined&&nv2!==''){if(!ws[hm.notes+er])ws[hm.notes+er]={};ws[hm.notes+er].v=nv2;ws[hm.notes+er].t='s';}
           });
           er++;
         });
