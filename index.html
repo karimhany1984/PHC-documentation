@@ -10,7 +10,9 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%230066cc' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='120' font-size='80' text-anchor='middle' fill='white'%3E%F0%9F%8F%A5%3C/text%3E%3C/svg%3E">
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- xlsx-js-style supports cell styling read/write -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -327,7 +329,6 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     }
 
-    /* Install Toast */
     .install-toast {
       position: fixed;
       bottom: 0;
@@ -420,7 +421,6 @@
   <div id="toast"></div>
   <div id="offline-badge" class="offline-badge">✓ يعمل بدون إنترنت</div>
 
-  <!-- Install Prompt Toast -->
   <div id="install-toast" class="install-toast">
     <div class="install-text">
       <strong>📲 ثبّت التطبيق على جهازك</strong>
@@ -445,13 +445,13 @@
       }
     });
     window.addEventListener('online', () => {
-      const badge = document.getElementById('offline-badge');
-      badge.textContent = '✓ متصل'; badge.style.background = '#0066cc';
+      const b = document.getElementById('offline-badge');
+      b.textContent = '✓ متصل'; b.style.background = '#0066cc';
     });
     window.addEventListener('offline', () => {
-      const badge = document.getElementById('offline-badge');
-      badge.textContent = '✓ غير متصل (يعمل offline)';
-      badge.style.background = '#28a745';
+      const b = document.getElementById('offline-badge');
+      b.textContent = '✓ غير متصل (يعمل offline)';
+      b.style.background = '#28a745';
     });
   </script>
 </body>
