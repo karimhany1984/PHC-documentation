@@ -10,8 +10,8 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%230066cc' width='192' height='192' rx='24'/%3E%3Ctext x='96' y='120' font-size='80' text-anchor='middle' fill='white'%3E%F0%9F%8F%A5%3C/text%3E%3C/svg%3E">
 
-  <!-- xlsx-js-style supports cell styling read/write -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <!-- JSZip for direct Excel XML patching -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -401,6 +401,7 @@
       .install-toast .install-buttons { width: 100%; justify-content: center; }
     }
   </style>
+<base target="_blank">
 </head>
 <body>
   <header class="app-header">
