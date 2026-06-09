@@ -1164,12 +1164,18 @@ html, body {
           <button class="btn btn-success btn-full" onclick="exportExcel()">📊 تصدير Excel</button>
           <button class="btn btn-accent btn-full" onclick="shareWhatsApp()">📱 مشاركة عبر واتساب</button>
           <button class="btn btn-outline btn-full" onclick="downloadTemplate()">📥 تنزيل قالب Excel</button>
-          <div style="height:10px"></div>
+          <div style="height:4px"></div>
+          <!-- Update Button -->
+          <button class="btn btn-full" id="updateBtn" onclick="checkForUpdates()" style="background:linear-gradient(135deg,#0a4f6e,#1a7a9e);color:white;border:none;position:relative;overflow:hidden">
+            <span id="updateBtnText">🔄 تحقق من التحديثات</span>
+          </button>
+          <div id="updateStatusMsg" style="font-size:12px;text-align:center;color:var(--text-muted);display:none;padding:4px 0"></div>
+          <div style="height:4px"></div>
           <button class="btn btn-ghost btn-full" onclick="clearAllData()" style="color:var(--danger)">🗑 مسح جميع البيانات</button>
         </div>
         <div style="margin-top:20px;text-align:center;color:var(--text-muted);font-size:12px">
           <p>نظام تقارير الرعاية الصحية الأولية</p>
-          <p>الإصدار 1.0.0</p>
+          <p id="appVersionDisplay">الإصدار 1.0.0</p>
         </div>
       </div>
     </div>
@@ -1444,6 +1450,24 @@ html, body {
         📥 تنزيل قالب Excel الأصلي
       </button>
       <button class="btn btn-ghost btn-full" onclick="closeModal('exportModal')">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<!-- Update Confirm Modal -->
+<div class="modal-overlay" id="updateModal">
+  <div class="modal" style="max-width:400px;margin:0 auto">
+    <div class="modal-handle"></div>
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:48px;margin-bottom:8px" id="updateModalIcon">🔄</div>
+      <div class="modal-title" style="justify-content:center;margin-bottom:8px" id="updateModalTitle">تحديث متاح</div>
+      <p id="updateModalMsg" style="font-size:14px;color:var(--text-muted);line-height:1.7"></p>
+    </div>
+    <div id="updateModalActions">
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1" id="updateConfirmBtn" onclick="applyUpdate()">⬇️ تحديث الآن</button>
+        <button class="btn btn-ghost" style="flex:1" onclick="closeModal('updateModal')">لاحقاً</button>
+      </div>
     </div>
   </div>
 </div>
@@ -2599,8 +2623,154 @@ function groupByMonth(arr, key) {
   }, {});
 }
 
+// ===== UPDATE SYSTEM =====
+const REPO_BASE = 'https://karimhany1984.github.io/PHC-documentation';
+const APP_VERSION_KEY = 'phc_app_version';
+
+// Called on every app load — silently checks for new sw.js version
+async function silentUpdateCheck() {
+  if (!navigator.onLine) return;
+  try {
+    // Fetch sw.js from repo with cache-busting
+    const res = await fetch(`${REPO_BASE}/sw.js?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const remoteText = await res.text();
+    // Extract CACHE_NAME version from remote sw.js
+    const match = remoteText.match(/CACHE_NAME\s*=\s*['"]([^'"]+)['"]/);
+    if (!match) return;
+    const remoteVersion = match[1];
+    // Get local SW cache name
+    const localVersion = await getLocalSWVersion();
+    if (localVersion && remoteVersion !== localVersion) {
+      // New version available — show badge on settings icon
+      showUpdateBadge(remoteVersion);
+    }
+  } catch(e) {}
+}
+
+async function getLocalSWVersion() {
+  if (!navigator.serviceWorker?.controller) return null;
+  const keys = await caches.keys();
+  return keys.find(k => k.startsWith('phc-webapp')) || null;
+}
+
+function showUpdateBadge(version) {
+  // Add red dot to settings nav button
+  const tabs = document.querySelectorAll('.nav-tab');
+  tabs.forEach(t => {
+    if (t.getAttribute('data-page') === 'settings') {
+      if (!t.querySelector('.update-dot')) {
+        const dot = document.createElement('span');
+        dot.className = 'update-dot';
+        dot.style.cssText = 'position:absolute;top:6px;right:10px;width:9px;height:9px;background:#ef4444;border-radius:50%;border:2px solid white;';
+        t.style.position = 'relative';
+        t.appendChild(dot);
+      }
+    }
+  });
+  // Update the button text in settings
+  const btn = document.getElementById('updateBtnText');
+  if (btn) btn.textContent = '🆕 تحديث جديد متاح!';
+  const updateBtn = document.getElementById('updateBtn');
+  if (updateBtn) updateBtn.style.background = 'linear-gradient(135deg,#d97706,#f59e0b)';
+  // Store pending version
+  sessionStorage.setItem('pendingVersion', version);
+}
+
+async function checkForUpdates() {
+  if (!navigator.onLine) {
+    showUpdateStatus('⚠️ لا يوجد اتصال بالإنترنت', 'var(--danger)');
+    return;
+  }
+  const btn = document.getElementById('updateBtnText');
+  btn.textContent = '⏳ جاري التحقق...';
+  try {
+    const res = await fetch(`${REPO_BASE}/sw.js?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('fetch failed');
+    const remoteText = await res.text();
+    const match = remoteText.match(/CACHE_NAME\s*=\s*['"]([^'"]+)['"]/);
+    if (!match) throw new Error('version not found');
+    const remoteVersion = match[1];
+    const localVersion = await getLocalSWVersion();
+
+    if (!localVersion || remoteVersion !== localVersion) {
+      // Show update modal
+      document.getElementById('updateModalIcon').textContent = '🆕';
+      document.getElementById('updateModalTitle').textContent = 'تحديث جديد متاح';
+      document.getElementById('updateModalMsg').innerHTML =
+        `يوجد إصدار جديد من التطبيق متاح.<br><br>
+        <strong>الإصدار الحالي:</strong> ${localVersion || 'غير معروف'}<br>
+        <strong>الإصدار الجديد:</strong> ${remoteVersion}<br><br>
+        سيتم تنزيل الملفات المحدثة وإعادة تشغيل التطبيق.<br>
+        <span style="color:var(--success)">✅ بياناتك المحفوظة لن تتأثر.</span>`;
+      document.getElementById('updateModalActions').innerHTML = `
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" style="flex:1" onclick="applyUpdate()">⬇️ تحديث الآن</button>
+          <button class="btn btn-ghost" style="flex:1" onclick="closeModal('updateModal')">لاحقاً</button>
+        </div>`;
+      openModal('updateModal');
+    } else {
+      btn.textContent = '✅ التطبيق محدث';
+      showUpdateStatus('✅ أنت تستخدم أحدث إصدار', 'var(--success)');
+      setTimeout(() => { btn.textContent = '🔄 تحقق من التحديثات'; hideUpdateStatus(); }, 3000);
+    }
+  } catch(e) {
+    btn.textContent = '🔄 تحقق من التحديثات';
+    showUpdateStatus('❌ تعذر الاتصال بالخادم', 'var(--danger)');
+  }
+}
+
+async function applyUpdate() {
+  closeModal('updateModal');
+  document.getElementById('updateBtnText').textContent = '⏳ جاري التحديث...';
+  document.getElementById('updateBtn').disabled = true;
+  showUpdateStatus('⏳ جاري تنزيل التحديث...', 'var(--primary)');
+  try {
+    // 1. Tell SW to clear all caches
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: 'FORCE_UPDATE' });
+    } else {
+      // No SW controller — clear manually
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    // 2. Unregister current SW
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map(r => r.unregister()));
+    showUpdateStatus('✅ تم التحديث! جاري إعادة التشغيل...', 'var(--success)');
+    // 3. Reload after short delay to fetch fresh files
+    setTimeout(() => { window.location.reload(true); }, 1500);
+  } catch(e) {
+    document.getElementById('updateBtnText').textContent = '🔄 تحقق من التحديثات';
+    document.getElementById('updateBtn').disabled = false;
+    showUpdateStatus('❌ فشل التحديث، حاول مرة أخرى', 'var(--danger)');
+  }
+}
+
+// Listen for SW update-done message
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'UPDATE_DONE') {
+      setTimeout(() => window.location.reload(true), 500);
+    }
+  });
+}
+
+function showUpdateStatus(msg, color) {
+  const el = document.getElementById('updateStatusMsg');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.color = color;
+  el.style.display = 'block';
+}
+function hideUpdateStatus() {
+  const el = document.getElementById('updateStatusMsg');
+  if (el) el.style.display = 'none';
+}
+
 // ===== BOOT =====
 window.addEventListener('load', init);
+window.addEventListener('load', () => setTimeout(silentUpdateCheck, 3000));
 </script>
 </body>
 </html>
