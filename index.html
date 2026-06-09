@@ -1072,8 +1072,9 @@ html, body {
           <div class="card-icon" style="background:rgba(139,92,246,0.1)">🎓</div>
           <h2>سجل التدريب</h2>
         </div>
+        <div id="trainingQuarterBanner" style="border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13px;font-weight:600;text-align:center"></div>
         <div id="trainingContent"></div>
-        <button class="btn btn-primary btn-full" style="margin-top:14px" onclick="saveTraining()">💾 حفظ بيانات التدريب</button>
+        <button class="btn btn-primary btn-full" style="margin-top:14px" id="saveTrainingBtn" onclick="saveTraining()">💾 حفظ بيانات التدريب</button>
       </div>
     </div>
 
@@ -1563,8 +1564,8 @@ function saveReportMonth() {
   localStorage.setItem('report_month', month);
   if (year) localStorage.setItem('report_year', year);
   updateReportMonthBadge();
-  // Reload clinics for the (possibly new) year
   loadClinics();
+  loadTraining();
 }
 
 let _pendingNewYear = '';
@@ -1778,6 +1779,8 @@ function showPage(name) {
   const [sub, title] = PAGE_TITLES[name] || [name, name];
   document.getElementById('nav_title').textContent = title;
   document.getElementById('nav_subtitle').textContent = sub;
+  // Rebuild training UI with current active quarter every time page is opened
+  if (name === 'training') loadTraining();
 }
 
 // ===== MODAL =====
@@ -1806,7 +1809,7 @@ async function saveSetup() {
   await dbPut('facility', fac);
   document.getElementById('setupScreen').classList.remove('show');
   await loadAll();
-  toast('تم حفظ بيانات المنشأة ✅', 'success');
+  toast('تم حفظ بيانات المنشأة ✅', 'success', 3000);
 }
 
 // ===== FACILITY =====
@@ -1861,7 +1864,7 @@ async function saveFacility() {
   };
   await dbPut('facility', fac);
   document.getElementById('banner_facility').textContent = fac.name || '—';
-  toast('تم حفظ بيانات المنشأة ✅', 'success');
+  toast('تم حفظ بيانات المنشأة ✅', 'success', 3000);
 }
 
 // ===== CLINICS =====
@@ -2117,19 +2120,95 @@ async function renderComplaints() {
 }
 
 // ===== TRAINING =====
+// Quarter months: indices 0=يناير, 3=أبريل, 6=يوليو, 9=أكتوبر
+const TRAINING_QUARTERS = [
+  { idx: 0,  label: 'يناير',  q: 'الربع الأول' },
+  { idx: 3,  label: 'أبريل',  q: 'الربع الثاني' },
+  { idx: 6,  label: 'يوليو',  q: 'الربع الثالث' },
+  { idx: 9,  label: 'أكتوبر', q: 'الربع الرابع' },
+];
+
+function getActiveQuarterIdx() {
+  // Returns the quarter column index (0-3) matching current selected month, or -1
+  const month = Number(localStorage.getItem('report_month')); // 1-based
+  if (!month) return -1;
+  const monthIdx = month - 1; // 0-based
+  return TRAINING_QUARTERS.findIndex(q => q.idx === monthIdx);
+}
+
 function buildTrainingUI() {
   const el = document.getElementById('trainingContent');
-  el.innerHTML = TRAINING_ITEMS.map(item => `
-    <div style="margin-bottom:16px">
-      <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:6px">${item.name}</div>
-      <div class="month-grid-input">
-        ${MONTHS_AR.map((m,mi) => `
-          <div class="month-cell">
-            <div class="m-name">${m.slice(0,3)}</div>
-            <input type="number" id="tr_${item.id}_${mi}" min="0" placeholder="—">
-          </div>`).join('')}
-      </div>
-    </div>`).join('');
+  const banner = document.getElementById('trainingQuarterBanner');
+  const saveBtn = document.getElementById('saveTrainingBtn');
+  const activeQIdx = getActiveQuarterIdx();
+  const month = Number(localStorage.getItem('report_month'));
+  const year = localStorage.getItem('report_year') || '';
+
+  // Banner
+  if (!month) {
+    banner.style.cssText = 'background:rgba(245,158,11,0.1);border:1.5px solid #f59e0b;color:#92400e;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13px;font-weight:600;text-align:center';
+    banner.innerHTML = '⚠️ يرجى اختيار شهر التقرير من الصفحة الرئيسية أولاً';
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.5';
+  } else if (activeQIdx === -1) {
+    const monthName = MONTHS_AR[month - 1];
+    const quarterMonths = TRAINING_QUARTERS.map(q => q.label).join(' / ');
+    banner.style.cssText = 'background:rgba(239,68,68,0.08);border:1.5px solid var(--danger);color:var(--danger);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13px;font-weight:600;text-align:center';
+    banner.innerHTML = `🚫 شهر <strong>${monthName}</strong> ليس من أشهر التدريب الربع سنوي<br><small style="font-weight:400">التدريب يُسجَّل في: ${quarterMonths} فقط</small>`;
+    saveBtn.disabled = true;
+    saveBtn.style.opacity = '0.5';
+  } else {
+    const q = TRAINING_QUARTERS[activeQIdx];
+    banner.style.cssText = 'background:rgba(16,185,129,0.1);border:1.5px solid var(--success);color:#065f46;border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;font-size:13px;font-weight:600;text-align:center';
+    banner.innerHTML = `✅ تسجيل بيانات التدريب — <strong>${q.q}</strong> (${q.label} ${year})`;
+    saveBtn.disabled = false;
+    saveBtn.style.opacity = '1';
+  }
+
+  // Build table — 4 quarter columns only
+  el.innerHTML = `
+    <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead>
+          <tr style="background:var(--surface2)">
+            <th style="padding:8px;text-align:right;border:1px solid var(--border);min-width:160px">بند التدريب</th>
+            ${TRAINING_QUARTERS.map((q, qi) => {
+              const isActive = qi === activeQIdx;
+              return `<th style="padding:8px;text-align:center;border:1px solid var(--border);background:${isActive ? 'rgba(16,185,129,0.15)' : 'inherit'};color:${isActive ? 'var(--success)' : 'inherit'}">${q.label}<br><small style="font-weight:400;font-size:11px">${q.q}</small></th>`;
+            }).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${TRAINING_ITEMS.map(item => `
+            <tr>
+              <td style="padding:8px;border:1px solid var(--border);font-weight:600">${item.name}</td>
+              ${TRAINING_QUARTERS.map((q, qi) => {
+                const isActive = qi === activeQIdx;
+                return `<td style="padding:4px;border:1px solid var(--border);text-align:center;background:${isActive ? 'rgba(16,185,129,0.05)' : 'inherit'}">
+                  <input type="number" id="tr_${item.id}_${qi}" min="0" placeholder="—"
+                    style="width:60px;padding:4px;border:1px solid ${isActive ? 'var(--success)' : 'var(--border)'};border-radius:4px;font-family:var(--font);font-size:12px;text-align:center;background:${isActive ? 'white' : 'var(--surface2)'}"
+                    ${!isActive ? 'readonly style="width:60px;padding:4px;border:1px solid var(--border);border-radius:4px;font-family:var(--font);font-size:12px;text-align:center;background:var(--surface2);cursor:not-allowed;color:var(--text-muted)"' : ''}>
+                </td>`;
+              }).join('')}
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  // Fix: apply disabled style properly
+  TRAINING_ITEMS.forEach(item => {
+    TRAINING_QUARTERS.forEach((q, qi) => {
+      const input = document.getElementById(`tr_${item.id}_${qi}`);
+      if (!input) return;
+      if (qi !== activeQIdx) {
+        input.readOnly = true;
+        input.style.background = 'var(--surface2)';
+        input.style.cursor = 'not-allowed';
+        input.style.color = 'var(--text-muted)';
+        input.style.border = '1px solid var(--border)';
+      }
+    });
+  });
 }
 
 async function loadTraining() {
@@ -2138,9 +2217,17 @@ async function loadTraining() {
   if (!data || !data.items) return;
   TRAINING_ITEMS.forEach(item => {
     const row = data.items.find(r => r.id === item.id);
-    if (row && row.months) {
-      row.months.forEach((val, mi) => {
-        const el = document.getElementById(`tr_${item.id}_${mi}`);
+    if (row && row.quarters) {
+      row.quarters.forEach((val, qi) => {
+        const el = document.getElementById(`tr_${item.id}_${qi}`);
+        if (el && val !== '' && val !== undefined) el.value = val;
+      });
+    }
+    // backwards compat: old months array — map to quarters
+    else if (row && row.months) {
+      TRAINING_QUARTERS.forEach((q, qi) => {
+        const val = row.months[q.idx];
+        const el = document.getElementById(`tr_${item.id}_${qi}`);
         if (el && val !== '' && val !== undefined) el.value = val;
       });
     }
@@ -2148,12 +2235,18 @@ async function loadTraining() {
 }
 
 async function saveTraining() {
+  const activeQIdx = getActiveQuarterIdx();
+  if (activeQIdx === -1) { toast('التسجيل غير مسموح في هذا الشهر', 'error'); return; }
+  // Load existing data first to preserve other quarters
+  const existing = await dbGet('training', 'main');
   const items = TRAINING_ITEMS.map(item => {
-    const months = MONTHS_AR.map((_,mi) => {
-      const val = document.getElementById(`tr_${item.id}_${mi}`)?.value;
-      return val !== '' && val !== undefined ? Number(val) : '';
-    });
-    return {id: item.id, months};
+    // Get existing quarters array or init 4 empties
+    const existingRow = existing?.items?.find(r => r.id === item.id);
+    const quarters = existingRow?.quarters ? [...existingRow.quarters] : ['','','',''];
+    // Update only the active quarter
+    const val = document.getElementById(`tr_${item.id}_${activeQIdx}`)?.value;
+    quarters[activeQIdx] = val !== '' && val !== undefined ? Number(val) : '';
+    return {id: item.id, quarters};
   });
   await dbPut('training', {id:'main', items});
   toast('تم حفظ بيانات التدريب ✅', 'success');
