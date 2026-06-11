@@ -1,5 +1,4 @@
-// PHC Webapp Service Worker
-const CACHE_NAME = 'phc-webapp-v37';
+const CACHE_NAME = 'phc-webapp-v38';
 const REPO_BASE = 'https://karimhany1984.github.io/PHC-documentation';
 const STATIC_ASSETS = [
   '/',
@@ -7,38 +6,33 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  'https://karimhany1984.github.io/PHC-documentation/PHC_Data_Collection_Sheet_final.xlsx',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+  'https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js',
   'https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700&display=swap',
 ];
 
-// Install: cache all static assets
 self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return Promise.allSettled(
+    caches.open(CACHE_NAME).then(cache =>
+      Promise.allSettled(
         STATIC_ASSETS.map(url =>
           cache.add(url).catch(err => console.warn('Failed to cache:', url, err))
         )
-      );
-    })
+      )
+    )
   );
 });
 
-// Activate: clean up old caches
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(
-        keys
-          .filter(key => key !== CACHE_NAME)
-          .map(key => caches.delete(key))
-      )
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
-// Fetch: cache-first for static, network-first for dynamic
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (event.request.method !== 'GET') return;
@@ -48,36 +42,24 @@ self.addEventListener('fetch', event => {
     caches.match(event.request).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
-        if (!response || response.status !== 200 || response.type === 'opaque') {
-          return response;
-        }
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then(cache => {
-          cache.put(event.request, responseClone);
-        });
+        if (!response || response.status !== 200 || response.type === 'opaque') return response;
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         return response;
       }).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
+        if (event.request.mode === 'navigate') return caches.match('/index.html');
       });
     })
   );
 });
 
-// ===== UPDATE MESSAGE HANDLER =====
 self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'FORCE_UPDATE') {
-    // Delete ALL caches so fresh files are fetched
+  if (event.data?.type === 'FORCE_UPDATE') {
     event.waitUntil(
-      caches.keys().then(keys =>
-        Promise.all(keys.map(key => caches.delete(key)))
-      ).then(() => {
-        // Notify all clients update is done
-        self.clients.matchAll().then(clients => {
-          clients.forEach(client => client.postMessage({ type: 'UPDATE_DONE' }));
-        });
-      })
+      caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+        .then(() => self.clients.matchAll().then(clients =>
+          clients.forEach(c => c.postMessage({ type: 'UPDATE_DONE' }))
+        ))
     );
   }
 });
