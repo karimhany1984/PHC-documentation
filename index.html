@@ -3069,6 +3069,13 @@ async function exportExcel() {
       files['xl/workbook.xml'] = new TextEncoder().encode(wbXml);
     }
 
+    // ── Remove calcChain.xml ──
+    // The calcChain tracks formula calculation order and becomes out-of-sync
+    // whenever cells are patched. Excel rejects the file with "We found a
+    // problem with some content" when the chain doesn't match the sheet data.
+    // Deleting it is safe — Excel regenerates it automatically on first open.
+    delete files['xl/calcChain.xml'];
+
     toast('⏳ جاري إنشاء الملف...', '', 0);
     await new Promise(r => setTimeout(r, 30));
 
