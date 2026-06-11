@@ -1,5 +1,5 @@
 // PHC Webapp Service Worker
-const CACHE_NAME = 'phc-webapp-v36';
+const CACHE_NAME = 'phc-webapp-v37';
 const REPO_BASE = 'https://karimhany1984.github.io/PHC-documentation';
 const STATIC_ASSETS = [
   '/',
