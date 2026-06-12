@@ -2811,6 +2811,55 @@ function _patchCell(sheet, cellRef, value) {
   return sheet;
 }
 
+// Expand shared-formula groups into individual formula cells.
+//
+// Problem: Excel shared formulas have one "master" cell that holds the
+// formula text (with ref= and si= attrs), and N "slave" cells that just
+// reference the master by si=. When _patchCell overwrites the master cell
+// (e.g. writing a user value to I4 which is si=0 master for I4:I67),
+// the 63 slaves still point to a non-existent master → Excel logs
+// "Removed Records: Shared formula" and strips all those cells.
+//
+// Fix: before any patching, convert every master + its slaves into plain
+// individual <f> cells with row-adjusted formula text. Then _patchCell
+// can overwrite any single cell freely without affecting its neighbours.
+function _expandSharedFormulas(sheet) {
+  // ── Phase 1: collect masters ──────────────────────────────────────────
+  const masters = {};   // si → { masterRow: int, formula: string }
+  const masterRx = /<c r="[A-Z]+(\d+)"[^>]*><f\b[^>]*\bref="[^"]+"\b[^>]*\bsi="(\d+)"[^>]*>([\s\S]*?)<\/f>/g;
+  let hit;
+  while ((hit = masterRx.exec(sheet)) !== null) {
+    masters[hit[2]] = { masterRow: parseInt(hit[1], 10), formula: hit[3] };
+  }
+  if (!Object.keys(masters).length) return sheet;   // nothing to expand
+
+  // ── Phase 2: strip shared attrs from master cells → plain <f> ─────────
+  sheet = sheet.replace(
+    /<f(\s[^>]*)?\bref="[^"]+"\b[^>]*\bsi="(\d+)"[^>]*>([\s\S]*?)<\/f>/g,
+    (_, _pre, _si, formula) => '<f>' + formula + '<\/f>'
+  );
+
+  // ── Phase 3: expand each slave to its own row-adjusted formula cell ────
+  // Slave form:  <c r="I7" s="3"><f t="shared" si="0"/><v>لا</v></c>
+  sheet = sheet.replace(
+    /<c r="([A-Z]+)(\d+)"([^>]*)><f\s+t="shared"\s+si="(\d+)"[^/]*\/>([\s\S]*?)<\/c>/g,
+    function(whole, col, rowStr, cellAttrs, si, rest) {
+      const master = masters[si];
+      if (!master) return whole;
+      const offset = parseInt(rowStr, 10) - master.masterRow;
+      // Adjust every relative cell reference in the formula (e.g. K4 → K7)
+      // Does not touch absolute refs like $K$4 (row part is after $).
+      const adjusted = master.formula.replace(
+        /([A-Z]+)(\d+)/g,
+        function(_, c, r) { return c + (parseInt(r, 10) + offset); }
+      );
+      return '<c r="' + col + rowStr + '"' + cellAttrs + '><f>' + adjusted + '<\/f>' + rest + '<\/c>';
+    }
+  );
+
+  return sheet;
+}
+
 // Force Excel to recalculate all formulas on open
 function _forceRecalc(wbXml) {
   if (wbXml.includes('<calcPr')) {
@@ -2977,6 +3026,7 @@ async function exportExcel() {
     // ════════════════════════════════════════════════
     let s2 = getSheet('سجل الشكاوى');
     if (s2) {
+      s2 = _expandSharedFormulas(s2);   // expand before patching — prevents "Removed Records: Shared formula"
       complaints.sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach((r, i) => {
         const row = 4 + i;
         s2 = pc(s2, `A${row}`, i + 1);
@@ -3067,6 +3117,7 @@ async function exportExcel() {
     // ════════════════════════════════════════════════
     let s5 = getSheet('الطوارئ والاستقبال');
     if (s5) {
+      s5 = _expandSharedFormulas(s5);   // expand before patching — prevents "Removed Records: Shared formula"
       er.sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach((r, i) => {
         const row = 4 + i;
         const ds = _dateSerial(r.date);
