@@ -2784,8 +2784,30 @@ function _patchCell(sheet, cellRef, value) {
     if (typeof value === 'number') return '<c r="' + cellRef + '"' + a + '><v>' + value + '</v></c>';
     return '<c r="' + cellRef + '"' + a + ' t="str"><v>' + esc(value) + '</v></c>';
   };
-  sheet = sheet.replace(new RegExp('<c r="' + cellRef + '"([^/]*)/>'), repl);
-  sheet = sheet.replace(new RegExp('<c r="' + cellRef + '"([^>]*)>[\\s\\S]*?<\\/c>'), repl);
+
+  // BUG FIX: Both regexes must never run on the same cell.
+  //
+  // Root cause of the old bug: the second regex used ([^>]*) which greedily
+  // captured the trailing "/" of a self-closing tag (e.g. s="179"/), turning
+  // "/>" into "//>" and consuming everything up to the next </c> in the
+  // document — eating adjacent cells and entire row tags along the way.
+  //
+  // Fix:
+  //   1. Track whether the self-closing regex matched; only run the open+close
+  //      regex if it did NOT match (mutual exclusion).
+  //   2. Use [^>/]* in the open+close regex as a second-line defence so it
+  //      structurally cannot match a self-closing tag even if tracking fails.
+  let patched = false;
+  sheet = sheet.replace(
+    new RegExp('<c r="' + cellRef + '"([^/]*)/>'),
+    (m, a) => { patched = true; return repl(m, a); }
+  );
+  if (!patched) {
+    sheet = sheet.replace(
+      new RegExp('<c r="' + cellRef + '"([^>/]*)>[\\s\\S]*?<\\/c>'),
+      repl
+    );
+  }
   return sheet;
 }
 
