@@ -3047,10 +3047,16 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyleIdx) {
 }
 
 // ── Strip sheetProtection from a sheet XML so cells are editable ──
+// Note: self-closing form <sheetProtection ... /> may contain "/" in base64
+// attribute values (hashValue, saltValue), so we cannot use [^/]* to match.
+// Instead we match any attributes up to the self-closing /> using a greedy
+// approach that handles multiline and "/" inside attribute values.
 function _removeSheetProtection(sheetXml) {
-  return sheetXml
-    .replace(/<sheetProtection[^/]*\/>/g, '')
-    .replace(/<sheetProtection[^>]*>[\s\S]*?<\/sheetProtection>/g, '');
+  // Self-closing: <sheetProtection .../>  (attributes may contain /)
+  sheetXml = sheetXml.replace(/<sheetProtection(?:\s[^>]*)?\/>/g, '');
+  // Paired tags: <sheetProtection ...>...</sheetProtection>
+  sheetXml = sheetXml.replace(/<sheetProtection(?:\s[^>]*)?>(?:[\s\S]*?)<\/sheetProtection>/g, '');
+  return sheetXml;
 }
 
 // ── Excel time fraction from HH:MM string ──
