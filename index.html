@@ -2972,30 +2972,47 @@ function _dateSerial(dateStr) {
   return Math.round((d - epoch) / 86400000);
 }
 
-// ── Patch a date cell — like _patchCell but ALWAYS preserves the date-format
-//    style (s= attr) from the nearest existing cell in the same column so
-//    Excel shows "dd/mm/yyyy" instead of a raw number.
-//    dateStyle: the s= value to use when no existing cell can be found.
-function _patchCellDate(sheet, cellRef, serialVal, dateStyle) {
+// ── Find the style index for date cells from xl/styles.xml.
+//    Returns the 0-based index string to use in s="…".
+//    Falls back to '14' (Excel built-in short date m/d/yy).
+function _findDateStyleIndex(files) {
+  try {
+    const stylesXml = files['xl/styles.xml']
+      ? new TextDecoder().decode(files['xl/styles.xml']) : '';
+    if (!stylesXml) return '14';
+    const DATE_FMTS = new Set([14,15,16,17,22,30,36,45,46,47,50,51,52,53,54,55,56,57,58]);
+    const customDateFmtIds = new Set();
+    for (const m of stylesXml.matchAll(/<numFmt numFmtId="(\d+)" formatCode="([^"]*)"/g)) {
+      const id = Number(m[1]);
+      const code = m[2].toLowerCase();
+      if (id >= 164 && /[ymd]/.test(code) && !/h/.test(code.replace(/th/g,''))) {
+        customDateFmtIds.add(id);
+      }
+    }
+    const cellXfsMatch = stylesXml.match(/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/);
+    if (!cellXfsMatch) return '14';
+    let idx = 0;
+    for (const xfm of cellXfsMatch[1].matchAll(/<xf\s([^>]*)>/g)) {
+      const attrs = xfm[1];
+      const fmtId = Number((attrs.match(/numFmtId="(\d+)"/) || [])[1] || 0);
+      if (DATE_FMTS.has(fmtId) || customDateFmtIds.has(fmtId)) return String(idx);
+      idx++;
+    }
+  } catch(e) {}
+  return '14';
+}
+
+// ── Patch a date cell — writes the serial number with the correct date style
+//    so Excel renders it as a date instead of a plain number.
+//    dateStyleIdx: value from _findDateStyleIndex() resolved once at export time.
+function _patchCellDate(sheet, cellRef, serialVal, dateStyleIdx) {
   if (serialVal === null || serialVal === undefined) return _patchCell(sheet, cellRef, null);
 
   const col = cellRef.replace(/\d+$/, '');
   const rowNum = cellRef.match(/\d+$/)[0];
-
-  // Try to find the s= style from any existing <c r="Bn"> cell in this column
-  let styleAttr = dateStyle ? ` s="${dateStyle}"` : '';
-  const colEsc = col.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const styleRx = new RegExp('<c r="' + colEsc + '\\d+"(?=[\\s"/])([^>]*)>');
-  const sm = styleRx.exec(sheet);
-  if (sm) {
-    const sMatch = /\bs="(\d+)"/.exec(sm[1]);
-    if (sMatch) styleAttr = ` s="${sMatch[1]}"`;
-  }
-
-  // Build the replacement cell XML directly
+  const styleAttr = dateStyleIdx ? ` s="${dateStyleIdx}"` : ' s="14"';
   const cellXml = `<c r="${cellRef}"${styleAttr}><v>${serialVal}</v></c>`;
 
-  // Try replacing existing self-closing cell
   const escaped = cellRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let patched = false;
   sheet = sheet.replace(
@@ -3008,8 +3025,6 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyle) {
       () => { patched = true; return cellXml; }
     );
   }
-
-  // Insert into row if cell didn't exist
   if (!patched) {
     const colIdx = c => c.split('').reduce((n, ch) => n * 26 + (ch.charCodeAt(0) - 64), 0);
     sheet = sheet.replace(
@@ -3019,8 +3034,7 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyle) {
         let inserted = false;
         const newInner = inner.replace(insertBefore, (m2, existCol) => {
           if (!inserted && colIdx(existCol) > colIdx(col)) {
-            inserted = true;
-            return cellXml + m2;
+            inserted = true; return cellXml + m2;
           }
           return m2;
         });
@@ -3030,6 +3044,13 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyle) {
     );
   }
   return sheet;
+}
+
+// ── Strip sheetProtection from a sheet XML so cells are editable ──
+function _removeSheetProtection(sheetXml) {
+  return sheetXml
+    .replace(/<sheetProtection[^/]*\/>/g, '')
+    .replace(/<sheetProtection[^>]*>[\s\S]*?<\/sheetProtection>/g, '');
 }
 
 // ── Excel time fraction from HH:MM string ──
@@ -3112,6 +3133,15 @@ async function exportExcel() {
     }
     function pc(xml, ref, val) { return _patchCell(xml, ref, val); }
 
+    // ── Resolve date style index once for all sheets ──
+    const _dsIdx = _findDateStyleIndex(files);
+
+    // ── Strip sheetProtection from all sheets so Excel allows editing ──
+    SHEET_NAMES.forEach(name => {
+      const xml = getSheet(name);
+      if (xml) putSheet(name, _removeSheetProtection(xml));
+    });
+
     // ════════════════════════════════════════════════
     // SHEET 1 — بيانات المنشأة و تردد العيادات
     // Row 3: اسم (B3)  Row 4: كود (B4)  Row 5: نوع (B5)
@@ -3166,13 +3196,13 @@ async function exportExcel() {
       complaints.sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach((r, i) => {
         const row = 4 + i;
         s2 = pc(s2, `A${row}`, i + 1);
-        s2 = _patchCellDate(s2, `B${row}`, _dateSerial(r.date));
+        s2 = _patchCellDate(s2, `B${row}`, _dateSerial(r.date), _dsIdx);
         s2 = pc(s2, `C${row}`, r.type     || null);
         s2 = pc(s2, `D${row}`, r.summary  || null);
         s2 = pc(s2, `E${row}`, r.resolution || null);
-        s2 = _patchCellDate(s2, `F${row}`, _dateSerial(r.resolve_date));
+        s2 = _patchCellDate(s2, `F${row}`, _dateSerial(r.resolve_date), _dsIdx);
         s2 = pc(s2, `G${row}`, r.feedback || null);
-        s2 = _patchCellDate(s2, `H${row}`, _dateSerial(r.feedback_date));
+        s2 = _patchCellDate(s2, `H${row}`, _dateSerial(r.feedback_date), _dsIdx);
         s2 = pc(s2, `I${row}`, r.immediate  || 'لا');
         s2 = pc(s2, `J${row}`, r.hr72       || 'لا');
       });
@@ -3223,7 +3253,7 @@ async function exportExcel() {
         s4 = pc(s4, `A${row}`, i + 1);
         s4 = pc(s4, `B${row}`, r.name   || null);
         s4 = pc(s4, `C${row}`, r.medid  || null);
-        s4 = _patchCellDate(s4, `D${row}`, _dateSerial(r.date));
+        s4 = _patchCellDate(s4, `D${row}`, _dateSerial(r.date), _dsIdx);
         s4 = pc(s4, `E${row}`, r.location   || null);
         s4 = pc(s4, `F${row}`, _timeSerial(r.code_time));
         s4 = pc(s4, `G${row}`, _timeSerial(r.start_time));
