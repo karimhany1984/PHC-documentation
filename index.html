@@ -2785,29 +2785,57 @@ function _patchCell(sheet, cellRef, value) {
     return '<c r="' + cellRef + '"' + a + ' t="str"><v>' + esc(value) + '</v></c>';
   };
 
-  // BUG FIX: Both regexes must never run on the same cell.
-  //
-  // Root cause of the old bug: the second regex used ([^>]*) which greedily
-  // captured the trailing "/" of a self-closing tag (e.g. s="179"/), turning
-  // "/>" into "//>" and consuming everything up to the next </c> in the
-  // document — eating adjacent cells and entire row tags along the way.
-  //
-  // Fix:
-  //   1. Track whether the self-closing regex matched; only run the open+close
-  //      regex if it did NOT match (mutual exclusion).
-  //   2. Use [^>/]* in the open+close regex as a second-line defence so it
-  //      structurally cannot match a self-closing tag even if tracking fails.
+  // ── Regex notes ──────────────────────────────────────────────────────────
+  // 1. (?=[\s"/]) lookahead prevents "B4" from matching inside "B40","B41"…
+  // 2. Mutual-exclusion: self-closing first; open+close only if no match.
+  // 3. [^>/]* in open+close prevents crossing the self-closing "/" boundary.
+  // ─────────────────────────────────────────────────────────────────────────
+  const escaped = cellRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let patched = false;
   sheet = sheet.replace(
-    new RegExp('<c r="' + cellRef + '"([^/]*)/>'),
+    new RegExp('<c r="' + escaped + '"(?=[\\s"/])([^/]*)/>'),
     (m, a) => { patched = true; return repl(m, a); }
   );
   if (!patched) {
     sheet = sheet.replace(
-      new RegExp('<c r="' + cellRef + '"([^>/]*)>[\\s\\S]*?<\\/c>'),
-      repl
+      new RegExp('<c r="' + escaped + '"(?=[\\s"/])([^>/]*)>[\\s\\S]*?<\\/c>'),
+      (m, a) => { patched = true; return repl(m, a); }
     );
   }
+
+  // ── Insert missing cell into its row ─────────────────────────────────────
+  // Some template rows omit data cells entirely (e.g. B4, C4, D4 in the
+  // complaints sheet are absent because the table starts empty). If neither
+  // regex matched, inject a new <c> element at the correct sorted position
+  // inside the row that owns this cellRef.
+  if (!patched && value !== null && value !== '' && value !== undefined) {
+    const rowNum = cellRef.match(/\d+$/)[0];
+    const colLet = cellRef.replace(/\d+$/, '');
+    // Convert column letters to a sort key (A=1, Z=26, AA=27, …)
+    const colIdx = c => c.split('').reduce((n, ch) => n * 26 + (ch.charCodeAt(0) - 64), 0);
+    const newCell = typeof value === 'number'
+      ? '<c r="' + cellRef + '"><v>' + value + '</v></c>'
+      : '<c r="' + cellRef + '" t="str"><v>' + esc(value) + '</v></c>';
+    // Match the row containing this rowNum; insert new cell in sorted order
+    sheet = sheet.replace(
+      new RegExp('(<row r="' + rowNum + '"[^>]*>)([\\s\\S]*?)(</row>)'),
+      (whole, open, inner, close) => {
+        // Find the right insertion point: before the first cell whose column > colLet
+        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"');
+        let inserted = false;
+        const newInner = inner.replace(insertBefore, (m2, existCol) => {
+          if (!inserted && colIdx(existCol) > colIdx(colLet)) {
+            inserted = true;
+            return newCell + m2;
+          }
+          return m2;
+        });
+        if (!inserted) return open + newInner + newCell + close;
+        return open + newInner + close;
+      }
+    );
+  }
+
   return sheet;
 }
 
@@ -2923,14 +2951,15 @@ async function exportExcel() {
   try {
     toast('⏳ جاري تحميل القالب...', '', 0);
 
-    const [templateBuf, facility, clinics, complaints, training, cpr, er] = await Promise.all([
+    const [templateBuf, facility, clinics, complaints, training, cpr, er, drills] = await Promise.all([
       _loadTemplate(),
       dbGet('facility', 'main'),
       dbGet('clinics', clinicsKey),
       dbGetAll('complaints'),
       dbGet('training', 'main'),
       dbGetAll('cpr'),
-      dbGetAll('er')
+      dbGetAll('er'),
+      dbGetAll('drills')
     ]);
 
     toast('⏳ جاري كتابة البيانات...', '', 0);
@@ -3105,6 +3134,46 @@ async function exportExcel() {
         s4 = pc(s4, `O${row}`, r.month        || null);
       });
       putSheet('الإفاقة القلبية', s4);
+
+      // ────────────────────────────────────────────────────
+      // DRILLS (مناورة انعاش قلبى) — written below the CPR
+      // cases table.  The template table ends at row 204, so
+      // we use row 206 for the section header and 207+ for data.
+      // Columns: A=م  B=الاسم/المسؤول  C=التاريخ  D=مكان
+      //          E=وقت Code Blue  F=وقت بداية CPR
+      //          G=وقت وصول الفريق  H=زمن الاستجابة(د)
+      //          I=الشهر
+      // ────────────────────────────────────────────────────
+      if (drills && drills.length) {
+        s4 = getSheet('الإفاقة القلبية'); // re-read after putSheet above
+        // Build new row XML for each drill and append before </sheetData>
+        const drillRows = [];
+        drills.sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach((r, i) => {
+          const row = 207 + i;
+          const esc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+          const nc = (ref, val) => {
+            if (val === null || val === undefined || val === '') return '';
+            if (typeof val === 'number') return `<c r="${ref}"><v>${val}</v></c>`;
+            return `<c r="${ref}" t="str"><v>${esc(val)}</v></c>`;
+          };
+          const cells = [
+            nc(`A${row}`, i + 1),
+            nc(`B${row}`, r.name || null),
+            nc(`C${row}`, _dateSerial(r.date)),
+            nc(`D${row}`, r.location || null),
+            nc(`E${row}`, _timeSerial(r.code_time)),
+            nc(`F${row}`, _timeSerial(r.start_time)),
+            nc(`G${row}`, _timeSerial(r.team_time)),
+            nc(`H${row}`, r.response_min != null ? Number(r.response_min) : null),
+            nc(`I${row}`, r.month || null),
+          ].join('');
+          if (cells) drillRows.push(`<row r="${row}">${cells}</row>`);
+        });
+        if (drillRows.length) {
+          s4 = s4.replace(/<\/sheetData>/, drillRows.join('') + '</sheetData>');
+        }
+        putSheet('الإفاقة القلبية', s4);
+      }
     }
 
     // ════════════════════════════════════════════════
