@@ -1287,7 +1287,7 @@ html, body {
       <label class="field-label">حل فوري؟</label>
       <div class="radio-group">
         <div class="radio-opt"><input type="radio" name="comp_immediate" id="comp_imm_yes" value="نعم"><label for="comp_imm_yes" class="yes">✅ نعم</label></div>
-        <div class="radio-opt"><input type="radio" name="comp_immediate" id="comp_imm_no" value="لا" checked><label for="comp_imm_no" class="no">❌ لا</label></div>
+        <div class="radio-opt"><input type="radio" name="comp_immediate" id="comp_imm_no" value="لا"><label for="comp_imm_no" class="no">❌ لا</label></div>
       </div>
     </div>
     <!-- حل خلال 72 ساعة — تلقائي -->
@@ -1295,7 +1295,7 @@ html, body {
       <label class="field-label">حل خلال 72 ساعة؟</label>
       <div class="radio-group">
         <div class="radio-opt"><input type="radio" name="comp_72h" id="comp_72_yes" value="نعم"><label for="comp_72_yes" class="yes">✅ نعم</label></div>
-        <div class="radio-opt"><input type="radio" name="comp_72h" id="comp_72_no" value="لا" checked><label for="comp_72_no" class="no">❌ لا</label></div>
+        <div class="radio-opt"><input type="radio" name="comp_72h" id="comp_72_no" value="لا"><label for="comp_72_no" class="no">❌ لا</label></div>
       </div>
     </div>
     <!-- التغذية الراجعة -->
@@ -2010,8 +2010,10 @@ async function saveClinics() {
 function compResetAutoFields() {
   document.getElementById('comp_resolution').value = '';
   document.getElementById('comp_days').value = '';
-  document.getElementById('comp_imm_no').checked = true;
-  document.getElementById('comp_72_no').checked = true;
+  document.getElementById('comp_imm_yes').checked = false;
+  document.getElementById('comp_imm_no').checked = false;
+  document.getElementById('comp_72_yes').checked = false;
+  document.getElementById('comp_72_no').checked = false;
   document.getElementById('comp_resolve_date_err').style.display = 'none';
 }
 
@@ -2041,8 +2043,10 @@ function onCompResolveDateChange() {
     if (d) {
       document.getElementById('comp_resolution').value = 'جاري الحل';
       document.getElementById('comp_days').value = '0';
-      document.getElementById('comp_imm_no').checked = true;
-      document.getElementById('comp_72_no').checked = true;
+      document.getElementById('comp_imm_yes').checked = false;
+      document.getElementById('comp_imm_no').checked = false;
+      document.getElementById('comp_72_yes').checked = false;
+      document.getElementById('comp_72_no').checked = false;
     }
     errEl.style.display = 'none';
     return;
@@ -2116,8 +2120,8 @@ async function openComplaintEdit(id) {
   sv('comp_resolve_date', rec.resolve_date);
   if (rec.date) document.getElementById('comp_resolve_date').min = rec.date;
   document.getElementById('comp_days').value = rec.days_to_resolve ?? '';
-  setRadio('comp_immediate', rec.immediate || 'لا');
-  setRadio('comp_72h', rec.hr72 || 'لا');
+  setRadio('comp_immediate', rec.immediate || '');
+  setRadio('comp_72h', rec.hr72 || '');
   sv('comp_feedback', rec.feedback);
   sv('comp_feedback_date', rec.feedback_date || '');
   document.getElementById('comp_feedback_date_group').style.display =
