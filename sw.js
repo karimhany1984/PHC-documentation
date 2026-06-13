@@ -1,4 +1,4 @@
-const CACHE_NAME = 'phc-webapp-v45';
+const CACHE_NAME = 'phc-webapp-v46';
 const REPO_BASE = 'https://karimhany1984.github.io/PHC-documentation';
 const STATIC_ASSETS = [
   '/',
@@ -6,7 +6,7 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  'https://karimhany1984.github.io/PHC-documentation/PHC_Data_Collection_Sheet_final.xlsx',
+  'https://karimhany1984.github.io/PHC-documentation/template.xlsx',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
   'https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js',
   'https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Tajawal:wght@300;400;500;700&display=swap',
