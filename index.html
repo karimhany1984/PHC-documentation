@@ -3279,31 +3279,38 @@ async function exportExcel() {
       // ────────────────────────────────────────────────────
       if (drills && drills.length) {
         s4 = getSheet('الإفاقة القلبية'); // re-read after putSheet above
-        // Build new row XML for each drill and append before </sheetData>
-        const drillRows = [];
-        drills.sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach((r, i) => {
-          const row = 207 + i;
-          const esc = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-          const nc = (ref, val) => {
-            if (val === null || val === undefined || val === '') return '';
-            if (typeof val === 'number') return `<c r="${ref}"><v>${val}</v></c>`;
-            return `<c r="${ref}" t="str"><v>${esc(val)}</v></c>`;
-          };
-          const cells = [
-            nc(`A${row}`, i + 1),
-            nc(`B${row}`, r.name || null),
-            nc(`C${row}`, _dateSerial(r.date)),
-            nc(`D${row}`, r.location || null),
-            nc(`E${row}`, _timeSerial(r.code_time)),
-            nc(`F${row}`, _timeSerial(r.start_time)),
-            nc(`G${row}`, _timeSerial(r.team_time)),
-            nc(`H${row}`, r.response_min != null ? Number(r.response_min) : null),
-            nc(`I${row}`, r.month || null),
-          ].join('');
-          if (cells) drillRows.push(`<row r="${row}">${cells}</row>`);
-        });
-        if (drillRows.length) {
-          s4 = s4.replace(/<\/sheetData>/, drillRows.join('') + '</sheetData>');
+        const esc4 = v => String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const nc4 = (ref, val) => {
+          if (val === null || val === undefined || val === '') return '';
+          if (typeof val === 'number') return `<c r="${ref}"><v>${val}</v></c>`;
+          return `<c r="${ref}" t="str"><v>${esc4(val)}</v></c>`;
+        };
+        const drillRowsXml = drills
+          .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+          .map((r, i) => {
+            const row = 207 + i;
+            const cells = [
+              nc4(`A${row}`, i + 1),
+              nc4(`B${row}`, r.name || null),
+              nc4(`C${row}`, _dateSerial(r.date)),
+              nc4(`D${row}`, r.location || null),
+              nc4(`E${row}`, _timeSerial(r.code_time)),
+              nc4(`F${row}`, _timeSerial(r.start_time)),
+              nc4(`G${row}`, _timeSerial(r.team_time)),
+              nc4(`H${row}`, r.response_min != null ? Number(r.response_min) : null),
+              nc4(`I${row}`, r.month || null),
+            ].join('');
+            return cells ? `<row r="${row}">${cells}</row>` : null;
+          })
+          .filter(Boolean)
+          .join('');
+        if (drillRowsXml) {
+          // Handle both <sheetData/> (self-closing, empty) and <sheetData>...</sheetData>
+          if (s4.includes('</sheetData>')) {
+            s4 = s4.replace('</sheetData>', drillRowsXml + '</sheetData>');
+          } else {
+            s4 = s4.replace('<sheetData/>', `<sheetData>${drillRowsXml}</sheetData>`);
+          }
         }
         putSheet('الإفاقة القلبية', s4);
       }
