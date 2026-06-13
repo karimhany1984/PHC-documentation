@@ -2816,12 +2816,12 @@ function _patchCell(sheet, cellRef, value) {
     const newCell = typeof value === 'number'
       ? '<c r="' + cellRef + '"><v>' + value + '</v></c>'
       : '<c r="' + cellRef + '" t="str"><v>' + esc(value) + '</v></c>';
-    // Match the row containing this rowNum; insert new cell in sorted order
+    // (?=[\s"]) lookahead: prevents r="4" matching r="40","41", etc.
     sheet = sheet.replace(
-      new RegExp('(<row r="' + rowNum + '"[^>]*>)([\\s\\S]*?)(</row>)'),
+      new RegExp('(<row r="' + rowNum + '"(?=[\\s"])[^>]*>)([\\s\\S]*?)(</row>)'),
       (whole, open, inner, close) => {
-        // Find the right insertion point: before the first cell whose column > colLet
-        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"');
+        // insertBefore needs the global flag so .replace() visits every <c> in the row
+        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/])', 'g');
         let inserted = false;
         const newInner = inner.replace(insertBefore, (m2, existCol) => {
           if (!inserted && colIdx(existCol) > colIdx(colLet)) {
@@ -2907,7 +2907,7 @@ async function _loadTemplate() {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), 15000);
   try {
-    const r = await fetch('./template.xlsx', { signal: ctrl.signal });
+    const r = await fetch('./PHC_Data_Collection_Sheet_final.xlsx', { signal: ctrl.signal });
     clearTimeout(tid);
     if (!r.ok) throw new Error('HTTP ' + r.status);
     _cachedTemplate = new Uint8Array(await r.arrayBuffer());
@@ -3260,10 +3260,10 @@ async function shareWhatsApp() {
 
 // ===== TEMPLATE DOWNLOAD =====
 function downloadTemplate() {
-  const url = 'template.xlsx';
+  const url = 'PHC_Data_Collection_Sheet_final.xlsx';
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'template.xlsx';
+  a.download = 'PHC_Data_Collection_Sheet_final.xlsx';
   a.click();
 }
 
