@@ -1,8 +1,9 @@
-const CACHE_NAME = 'phc-webapp-v57';
+const CACHE_NAME = 'phc-webapp-v58';
 const REPO_BASE = 'https://karimhany1984.github.io/PHC-documentation';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
+  '/PHC dashboard final.html',
   '/manifest.json',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
