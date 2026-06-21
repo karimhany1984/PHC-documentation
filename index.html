@@ -2900,6 +2900,190 @@ function _patchCell(sheet, cellRef, value) {
   return sheet;
 }
 
+// ════════════════════════════════════════════════════════════════════
+// DERIVED VALUES — الاجمالي الشهري + نتائج المؤشرات الشهرية
+//
+// Both sheets are 100% formula-driven in the template (COUNTIFS/SUMIFS/
+// IF chains referencing سجل الشكاوى, تدريب, الإفاقة القلبية,
+// الطوارئ والاستقبال and بيانات المنشأة). Excel only recalculates those
+// formulas when the file is opened in a real spreadsheet app — anything
+// that reads the exported .xlsx directly (e.g. a SheetJS-based reader)
+// only ever sees the last cached <v>, which is blank until that happens.
+//
+// The functions below recompute the exact same results directly from
+// the same IndexedDB records used to populate the entry sheets, and
+// patch them in as plain cached values — so the export is correct
+// immediately, with no Excel round-trip required.
+//
+// NOTE on "عدد المرضى الذين عادو للطوارئ خلال 72 ساعة" (sheet6 row 52):
+// the template's own formula reads a fixed K4:K15 range that collides
+// with the per-patient ER log (which also starts at row 4), so it was
+// never reliably computable from the template structure itself even in
+// Excel. There's no separate monthly "readmit total" entry in the app
+// (unlike total patient count, which has its own er_monthly input), so
+// this is approximated as the readmit count *within the logged ER
+// sample* for that month — consistent with how the sample size (row 51)
+// is already used elsewhere. If a dedicated monthly readmit total input
+// would be more accurate for your reporting, that's a small separate
+// addition — happy to add it.
+// ════════════════════════════════════════════════════════════════════
+
+// Normalize Arabic text for matching despite hamza/whitespace
+// inconsistencies between the complaint-type dropdown ("ادارية") and the
+// official template's category labels ("إدارية").
+function _normAr(s) {
+  return (s || '').toString().trim()
+    .replace(/[إأٱآ]/g, 'ا')
+    .replace(/\s+/g, ' ');
+}
+
+// Column-A category labels from الاجمالي الشهري rows 13-26, in order.
+const COMPLAINT_CATEGORIES = [
+  'الاغذية والمطبخ', 'إدارية', 'إجراءات الدخول', 'توافر الأدوية',
+  'معاملة الفريق الطبي', 'وقت الانتظار', 'اسعار الخدمات', 'حقوق المرضى',
+  'الأمن والنظافة', 'التحويل والاحالة', 'الفحوصات الطبية(اشعة/ معمل)',
+  'عدم توافر الخدمة', 'الاعطال و الصيانة', 'أخرى'
+];
+
+function _ratio(num, den) {
+  if (num === null || num === undefined || den === null || den === undefined || den === 0) return null;
+  return num / den;
+}
+
+// Returns { [sheet6RowNumber]: [12 monthly values] } for every row of
+// الاجمالي الشهري that the template derives from raw data.
+function _computeMonthlyTotals(facility, clinics, complaints, training, cpr, er, erMonthlyData) {
+  const totals = {};
+  const set = (row, fn) => { totals[row] = MONTHS_EN.map((m, mi) => fn(m, mi)); };
+  const resolveMonth = r => r.resolve_date ? getMonthLabel(r.resolve_date) : '';
+
+  // ── الشكاوى ──
+  set(6,  m => complaints.filter(r => r.month === m).length);
+  set(7,  m => complaints.filter(r => r.month === m && resolveMonth(r) === m && r.resolution === 'تم الحل').length);
+  set(8,  m => complaints.filter(r => r.month === m && r.immediate === 'نعم').length);
+  set(9,  m => complaints.filter(r => r.month === m && resolveMonth(r) === m && r.hr72 === 'نعم').length);
+  set(10, m => complaints.filter(r => r.month === m && r.feedback === 'تم التغذية الراجعة').length);
+  set(11, m => complaints.filter(r => r.month === m && resolveMonth(r) === m)
+                          .reduce((s, r) => s + (r.days_to_resolve || 0), 0));
+
+  // ── تصنيف الشكاوى ──
+  COMPLAINT_CATEGORIES.forEach((cat, i) => {
+    set(13 + i, m => complaints.filter(r => r.month === m && _normAr(r.type) === _normAr(cat)).length);
+  });
+
+  // ── التدريب (pass-through from تدريب sheet, same source the export
+  //    already writes into the تدريب tab) ──
+  const trVal = (id, mi) => {
+    const row = training?.items?.find(r => r.id === id);
+    const v = row?.months?.[mi];
+    return (v !== '' && v !== undefined && v !== null) ? Number(v) : null;
+  };
+  set(29, (_, mi) => trVal('tr1', mi));
+  set(30, (_, mi) => trVal('tr2', mi));
+  set(31, (_, mi) => {
+    const a = trVal('tr1', mi), b = trVal('tr2', mi);
+    return (a === null && b === null) ? null : (a || 0) + (b || 0);
+  });
+  set(32, (_, mi) => trVal('tr3', mi));
+  set(33, (_, mi) => trVal('tr4', mi));
+  set(34, (_, mi) => trVal('tr5', mi));
+  set(35, (_, mi) => trVal('tr6', mi));
+
+  // ── الإفاقة القلبية التنفسية (drills are intentionally excluded —
+  //    they're practice runs, not real cardiac-arrest cases) ──
+  set(38, m => cpr.filter(r => r.month === m).length);
+  set(39, m => cpr.filter(r => r.month === m && r.outcome === 'نجاة').length);
+  set(40, m => cpr.filter(r => r.month === m && r.outcome === 'وفاة').length);
+  set(43, m => cpr.filter(r => r.month === m && (r.response_min || 0) > 0).length);
+  set(44, m => cpr.filter(r => r.month === m).reduce((s, r) => s + ((r.response_min || 0) / 1440), 0));
+  set(45, m => cpr.filter(r => r.month === m)
+                   .reduce((s, r) => s + (calcTimeDiff(r.start_time, r.end_time) / 1440), 0));
+  set(46, m => cpr.filter(r => r.month === m && r.doc_complete === 'نعم').length);
+  set(47, m => cpr.filter(r => r.month === m).reduce((s, r) => s + (Number(r.cycles) || 0), 0));
+
+  // ── الطوارئ والاستقبال ──
+  set(50, m => er.filter(r => r.month === m).reduce((s, r) => s + ((r.duration_min || 0) / 1440), 0));
+  set(51, m => er.filter(r => r.month === m).length);
+  set(52, m => er.filter(r => r.month === m && r.readmit === 1).length); // see note above
+  set(53, (_, mi) => {
+    const v = erMonthlyData?.months?.[mi];
+    return (v !== '' && v !== undefined && v !== null) ? Number(v) : null;
+  });
+
+  // ── تردد العيادات (pass-through, mirrors what sheet1 already gets) ──
+  set(56, (_, mi) => CLINIC_TYPES.reduce((s, c, ci) => {
+    const v = clinics?.rows?.[ci]?.months?.[mi];
+    return s + (v !== '' && v !== undefined && v !== null ? Number(v) : 0);
+  }, 0));
+  CLINIC_TYPES.forEach((c, ci) => {
+    set(57 + ci, (_, mi) => {
+      const v = clinics?.rows?.[ci]?.months?.[mi];
+      return (v !== '' && v !== undefined && v !== null) ? Number(v) : null;
+    });
+  });
+
+  return totals;
+}
+
+// Patches every row of `totals` into sheet6's B..M columns (Jan..Dec).
+function _patchMonthlyTotals(sheet, totals) {
+  const cols = ['B','C','D','E','F','G','H','I','J','K','L','M'];
+  for (const row in totals) {
+    const vals = totals[row];
+    cols.forEach((col, mi) => { sheet = _patchCell(sheet, `${col}${row}`, vals[mi]); });
+  }
+  return sheet;
+}
+
+// Returns { [sheet7RowNumber]: [12 monthly values] } for every FU- row,
+// mirroring نتائج المؤشرات الشهرية's own IF/ratio formulas exactly,
+// but reading from the `totals` we just computed instead of re-reading
+// (potentially still-stale) cells back out of الاجمالي الشهري.
+function _computeIndicatorRows(totals, clinics) {
+  const rows = {};
+  rows[5] = totals[56]; // FU-004 — same clinic-frequency sum as sheet6 B56
+  CLINIC_TYPES.forEach((c, ci) => {
+    rows[6 + ci] = MONTHS_EN.map((_, mi) => {
+      const v = clinics?.rows?.[ci]?.months?.[mi];
+      return (v !== '' && v !== undefined && v !== null) ? Number(v) : null;
+    });
+  });
+  rows[15] = MONTHS_EN.map((_, mi) => _ratio(totals[50][mi], totals[51][mi]));
+  rows[16] = MONTHS_EN.map((_, mi) => _ratio(totals[52][mi], totals[53][mi]));
+  rows[19] = MONTHS_EN.map((_, mi) => _ratio(totals[35][mi], totals[32][mi]));
+  rows[20] = MONTHS_EN.map((_, mi) => _ratio(totals[33][mi], totals[29][mi]));
+  rows[21] = MONTHS_EN.map((_, mi) => _ratio(totals[34][mi], totals[30][mi]));
+  rows[22] = MONTHS_EN.map((_, mi) => _ratio(totals[35][mi], totals[31][mi]));
+  rows[25] = totals[38];
+  rows[26] = MONTHS_EN.map((_, mi) => _ratio(totals[39][mi], totals[38][mi]));
+  rows[27] = MONTHS_EN.map((_, mi) => _ratio(totals[40][mi], totals[38][mi]));
+  rows[28] = MONTHS_EN.map((_, mi) => _ratio(totals[44][mi], totals[43][mi]));
+  rows[29] = MONTHS_EN.map((_, mi) => _ratio(totals[45][mi], totals[38][mi]));
+  rows[30] = MONTHS_EN.map((_, mi) => {
+    const cycles = totals[47][mi], dur = totals[45][mi];
+    if (cycles === null || dur === null || dur === 0) return null;
+    return (cycles * 2) / (dur * 1440);
+  });
+  rows[31] = MONTHS_EN.map((_, mi) => _ratio(totals[46][mi], totals[38][mi]));
+  rows[34] = MONTHS_EN.map((_, mi) => _ratio(totals[11][mi], totals[6][mi]));
+  rows[35] = totals[6];
+  rows[36] = MONTHS_EN.map((_, mi) => _ratio(totals[7][mi], totals[6][mi]));
+  rows[37] = MONTHS_EN.map((_, mi) => _ratio(totals[8][mi], totals[6][mi]));
+  rows[38] = MONTHS_EN.map((_, mi) => _ratio(totals[9][mi], totals[6][mi]));
+  rows[39] = MONTHS_EN.map((_, mi) => _ratio(totals[10][mi], totals[7][mi]));
+  return rows;
+}
+
+// Patches every row of `rows` into sheet7's D..O columns (Jan..Dec).
+function _patchIndicatorRows(sheet, rows) {
+  const cols = ['D','E','F','G','H','I','J','K','L','M','N','O'];
+  for (const row in rows) {
+    const vals = rows[row];
+    cols.forEach((col, mi) => { sheet = _patchCell(sheet, `${col}${row}`, vals[mi]); });
+  }
+  return sheet;
+}
+
 // Expand shared-formula groups into individual formula cells.
 //
 // Problem: Excel shared formulas have one "master" cell that holds the
@@ -3367,6 +3551,24 @@ async function exportExcel() {
         });
         putSheet('الطوارئ والاستقبال', s5);
       }
+    }
+
+    // ── Compute & patch derived values for الاجمالي الشهري and
+    //    نتائج المؤشرات الشهرية so the export is correct immediately,
+    //    without depending on Excel recalculating stale formula cells ──
+    const monthlyTotals = _computeMonthlyTotals(facility, clinics, complaints, training, cpr, er, erMonthlyData);
+    let s6 = getSheet('الاجمالي الشهري');
+    if (s6) {
+      s6 = _expandSharedFormulas(s6);   // expand before patching — same reason as سجل الشكاوى/الطوارئ
+      s6 = _patchMonthlyTotals(s6, monthlyTotals);
+      putSheet('الاجمالي الشهري', s6);
+    }
+    const indicatorRows = _computeIndicatorRows(monthlyTotals, clinics);
+    let s7 = getSheet('نتائج المؤشرات الشهرية');
+    if (s7) {
+      s7 = _expandSharedFormulas(s7);
+      s7 = _patchIndicatorRows(s7, indicatorRows);
+      putSheet('نتائج المؤشرات الشهرية', s7);
     }
 
     // ── Force recalculation on open ──
