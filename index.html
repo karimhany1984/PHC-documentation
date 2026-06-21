@@ -1169,6 +1169,17 @@ html, body {
       </div>
     </div>
 
+    <!-- DASHBOARD PAGE -->
+    <div class="page" id="page-dashboard" style="padding:0;height:calc(100dvh - var(--nav-h) - var(--bottom-h));overflow:hidden;">
+      <iframe
+        src="PHC_dashboard_final.html"
+        id="dashboard-iframe"
+        style="width:100%;height:100%;border:none;display:block;"
+        title="تحليل بيانات م. ميشيل"
+        loading="lazy"
+      ></iframe>
+    </div>
+
     <!-- SETTINGS PAGE -->
     <div class="page" id="page-settings">
       <div class="card">
@@ -1219,6 +1230,10 @@ html, body {
     <button class="nav-tab" data-page="indicators" onclick="showPage('indicators')">
       <span class="tab-icon">📊</span>
       <span class="tab-label">المؤشرات</span>
+    </button>
+    <button class="nav-tab" data-page="dashboard" onclick="showPage('dashboard')">
+      <span class="tab-icon">📈</span>
+      <span class="tab-label" style="font-size:9px">تحليل<br>م. ميشيل</span>
     </button>
   </nav>
 </div>
@@ -1850,6 +1865,7 @@ const PAGE_TITLES = {
   cpr: ['الإفاقة القلبية', 'سجل الإفاقة القلبية التنفسية'],
   er: ['الطوارئ', 'سجل الطوارئ والاستقبال'],
   indicators: ['المؤشرات', 'نتائج المؤشرات الشهرية'],
+  dashboard: ['تحليل بيانات م. ميشيل', 'لوحة مؤشرات الأداء'],
   settings: ['الإعدادات', 'إعدادات التطبيق'],
 };
 
