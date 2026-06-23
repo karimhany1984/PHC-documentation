@@ -2749,7 +2749,7 @@ async function renderIndicators() {
         <div style="font-size:13px;font-weight:600;margin-top:3px">${ind.name}</div>
         <div style="display:flex;gap:4px;overflow-x:auto;margin-top:5px;scrollbar-width:none;padding-bottom:2px">
           ${MONTHS_AR.map((m,mi) => `<div style="text-align:center;flex-shrink:0">
-            <div style="font-size:10px;color:var(--text-muted);font-weight:600">${m.slice(0,3)}</div>
+            <div style="font-size:10px;color:var(--text-muted);font-weight:600">${m}</div>
             <div style="background:var(--surface2);border-radius:5px;padding:3px 6px;font-size:12px;font-weight:700;color:${String(ind.data[mi]).includes('%') || Number(ind.data[mi])>0 ? 'var(--primary)':'var(--text-muted)'};min-width:40px;text-align:center">${ind.data[mi]}</div>
           </div>`).join('')}
         </div>
