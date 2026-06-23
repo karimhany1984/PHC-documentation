@@ -2854,12 +2854,12 @@ function _patchCell(sheet, cellRef, value) {
   const escaped = cellRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let patched = false;
   sheet = sheet.replace(
-    new RegExp('<c r="' + escaped + '"(?=[\\s"/])([^/]*)/>'),
+    new RegExp('<c r="' + escaped + '"(?=[\\s"/>])([^/]*)/>'),
     (m, a) => { patched = true; return repl(m, a); }
   );
   if (!patched) {
     sheet = sheet.replace(
-      new RegExp('<c r="' + escaped + '"(?=[\\s"/])([^>/]*)>[\\s\\S]*?<\\/c>'),
+      new RegExp('<c r="' + escaped + '"(?=[\\s"/>])([^>/]*)>[\\s\\S]*?<\\/c>'),
       (m, a) => { patched = true; return repl(m, a); }
     );
   }
@@ -3220,12 +3220,12 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyleIdx) {
   const escaped = cellRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let patched = false;
   sheet = sheet.replace(
-    new RegExp('<c r="' + escaped + '"(?=[\\s"/])[^/]*/>'),
+    new RegExp('<c r="' + escaped + '"(?=[\\s"/>])[^/]*/>'),
     () => { patched = true; return cellXml; }
   );
   if (!patched) {
     sheet = sheet.replace(
-      new RegExp('<c r="' + escaped + '"(?=[\\s"/])[^>/]*>[\\s\\S]*?<\\/c>'),
+      new RegExp('<c r="' + escaped + '"(?=[\\s"/>])[^>/]*>[\\s\\S]*?<\\/c>'),
       () => { patched = true; return cellXml; }
     );
   }
