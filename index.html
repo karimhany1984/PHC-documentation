@@ -10,6 +10,9 @@
 <meta name="description" content="تطبيق جمع بيانات الرعاية الصحية الأولية">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-192.png">
+<link rel="apple-touch-icon" sizes="120x120" href="icons/icon-192.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
 <title>نظام تقارير الرعاية الصحية الأولية</title>
 
@@ -747,7 +750,44 @@ html, body {
 </style>
 </head>
 <body>
+<!-- iOS Install Hint Banner -->
+<div id="iosInstallBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9998;
+  background:#0a4f6e;color:white;padding:14px 16px 24px;
+  box-shadow:0 -4px 20px rgba(0,0,0,0.3);font-family:'Cairo',sans-serif;direction:rtl">
+  <div style="display:flex;align-items:flex-start;gap:12px">
+    <span style="font-size:28px">🏥</span>
+    <div style="flex:1">
+      <div style="font-size:14px;font-weight:700;margin-bottom:3px">ثبّت التطبيق على هاتفك</div>
+      <div style="font-size:12px;opacity:0.85;line-height:1.5">
+        اضغط على زر <strong>المشاركة</strong> ثم اختر
+        <strong>"إضافة إلى الشاشة الرئيسية"</strong> 
+        <span style="font-size:16px">⬆️</span>
+      </div>
+    </div>
+    <button onclick="document.getElementById('iosInstallBanner').style.display='none';localStorage.setItem('iosHintDismissed','1')"
+      style="background:rgba(255,255,255,0.2);border:none;color:white;border-radius:8px;
+      padding:6px 10px;font-size:14px;cursor:pointer;flex-shrink:0">✕</button>
+  </div>
+</div>
 
+<!-- Android Install Button (shown when beforeinstallprompt fires) -->
+<div id="androidInstallBanner" style="display:none;position:fixed;bottom:80px;left:12px;right:12px;z-index:9997;
+  background:#0a4f6e;color:white;border-radius:14px;padding:14px 16px;
+  box-shadow:0 8px 32px rgba(10,79,110,0.4);font-family:'Cairo',sans-serif;direction:rtl">
+  <div style="display:flex;align-items:center;gap:12px">
+    <span style="font-size:28px">📲</span>
+    <div style="flex:1">
+      <div style="font-size:14px;font-weight:700;margin-bottom:2px">ثبّت التطبيق</div>
+      <div style="font-size:12px;opacity:0.85">اعمل بدون إنترنت وبشكل أسرع</div>
+    </div>
+    <button onclick="triggerAndroidInstall()"
+      style="background:#00c9a7;border:none;color:white;border-radius:10px;
+      padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">تثبيت</button>
+    <button onclick="document.getElementById('androidInstallBanner').style.display='none';localStorage.setItem('androidHintDismissed','1')"
+      style="background:rgba(255,255,255,0.15);border:none;color:white;border-radius:8px;
+      padding:6px 8px;font-size:13px;cursor:pointer;flex-shrink:0">✕</button>
+  </div>
+</div>
 <!-- Loading Screen -->
 <div class="loading-overlay" id="loadingScreen">
   <div class="loader-logo">🏥</div>
@@ -1819,12 +1859,14 @@ async function init() {
       await loadAll();
     }
     document.getElementById('loadingScreen').style.display = 'none';
+    checkiOSInstallHint();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').catch(()=>{});
     }
   } catch(e) {
     console.error(e);
     document.getElementById('loadingScreen').style.display = 'none';
+    checkiOSInstallHint();
   }
 }
 
@@ -3829,7 +3871,43 @@ function hideUpdateStatus() {
   const el = document.getElementById('updateStatusMsg');
   if (el) el.style.display = 'none';
 }
+// ===== PWA INSTALL PROMPT =====
+let _installPrompt = null;
 
+// Android: capture the install prompt
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  _installPrompt = e;
+  if (!localStorage.getItem('androidHintDismissed')) {
+    document.getElementById('androidInstallBanner').style.display = 'block';
+  }
+});
+
+// Android: hide banner after install
+window.addEventListener('appinstalled', () => {
+  _installPrompt = null;
+  document.getElementById('androidInstallBanner').style.display = 'none';
+});
+
+async function triggerAndroidInstall() {
+  if (!_installPrompt) return;
+  document.getElementById('androidInstallBanner').style.display = 'none';
+  _installPrompt.prompt();
+  const { outcome } = await _installPrompt.userChoice;
+  if (outcome === 'accepted') _installPrompt = null;
+}
+
+// iOS: show hint if running in Safari (not already installed)
+function checkiOSInstallHint() {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone === true;
+  const dismissed = localStorage.getItem('iosHintDismissed');
+  if (isIOS && !isStandalone && !dismissed) {
+    setTimeout(() => {
+      document.getElementById('iosInstallBanner').style.display = 'block';
+    }, 3000);
+  }
+}
 // ===== BOOT =====
 window.addEventListener('load', init);
 window.addEventListener('load', () => setTimeout(silentUpdateCheck, 3000));
