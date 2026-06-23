@@ -2854,12 +2854,12 @@ function _patchCell(sheet, cellRef, value) {
   const escaped = cellRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let patched = false;
   sheet = sheet.replace(
-    new RegExp('<c r="' + escaped + '"(?=[\\s"/])([^/]*)/>'),
+    new RegExp('<c r="' + escaped + '"(?=[\\s"/>])([^/]*)/>'),
     (m, a) => { patched = true; return repl(m, a); }
   );
   if (!patched) {
     sheet = sheet.replace(
-      new RegExp('<c r="' + escaped + '"(?=[\\s"/])([^>/]*)>[\\s\\S]*?<\\/c>'),
+      new RegExp('<c r="' + escaped + '"(?=[\\s"/>])([^>/]*)>[\\s\\S]*?<\\/c>'),
       (m, a) => { patched = true; return repl(m, a); }
     );
   }
@@ -2882,7 +2882,7 @@ function _patchCell(sheet, cellRef, value) {
       new RegExp('(<row r="' + rowNum + '"(?=[\\s"])[^>]*>)([\\s\\S]*?)(</row>)'),
       (whole, open, inner, close) => {
         // insertBefore needs the global flag so .replace() visits every <c> in the row
-        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/])', 'g');
+        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/>])', 'g');
         let inserted = false;
         const newInner = inner.replace(insertBefore, (m2, existCol) => {
           if (!inserted && colIdx(existCol) > colIdx(colLet)) {
@@ -3220,12 +3220,12 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyleIdx) {
   const escaped = cellRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let patched = false;
   sheet = sheet.replace(
-    new RegExp('<c r="' + escaped + '"(?=[\\s"/])[^/]*/>'),
+    new RegExp('<c r="' + escaped + '"(?=[\\s"/>])[^/]*/>'),
     () => { patched = true; return cellXml; }
   );
   if (!patched) {
     sheet = sheet.replace(
-      new RegExp('<c r="' + escaped + '"(?=[\\s"/])[^>/]*>[\\s\\S]*?<\\/c>'),
+      new RegExp('<c r="' + escaped + '"(?=[\\s"/>])[^>/]*>[\\s\\S]*?<\\/c>'),
       () => { patched = true; return cellXml; }
     );
   }
@@ -3234,7 +3234,7 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyleIdx) {
     sheet = sheet.replace(
       new RegExp('(<row r="' + rowNum + '"(?=[\\s"])[^>]*>)([\\s\\S]*?)(</row>)'),
       (whole, open, inner, close) => {
-        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/])', 'g');
+        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/>])', 'g');
         let inserted = false;
         const newInner = inner.replace(insertBefore, (m2, existCol) => {
           if (!inserted && colIdx(existCol) > colIdx(col)) {
