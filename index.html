@@ -2854,12 +2854,12 @@ function _patchCell(sheet, cellRef, value) {
   const escaped = cellRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let patched = false;
   sheet = sheet.replace(
-    new RegExp('<c r="' + escaped + '"(?=[\\s"/>])([^/]*)/>'),
+    new RegExp('<c r="' + escaped + '"(?=[\\s"/])([^/]*)/>'),
     (m, a) => { patched = true; return repl(m, a); }
   );
   if (!patched) {
     sheet = sheet.replace(
-      new RegExp('<c r="' + escaped + '"(?=[\\s"/>])([^>/]*)>[\\s\\S]*?<\\/c>'),
+      new RegExp('<c r="' + escaped + '"(?=[\\s"/])([^>/]*)>[\\s\\S]*?<\\/c>'),
       (m, a) => { patched = true; return repl(m, a); }
     );
   }
@@ -2882,7 +2882,7 @@ function _patchCell(sheet, cellRef, value) {
       new RegExp('(<row r="' + rowNum + '"(?=[\\s"])[^>]*>)([\\s\\S]*?)(</row>)'),
       (whole, open, inner, close) => {
         // insertBefore needs the global flag so .replace() visits every <c> in the row
-        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/>])', 'g');
+        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/])', 'g');
         let inserted = false;
         const newInner = inner.replace(insertBefore, (m2, existCol) => {
           if (!inserted && colIdx(existCol) > colIdx(colLet)) {
@@ -3220,12 +3220,12 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyleIdx) {
   const escaped = cellRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   let patched = false;
   sheet = sheet.replace(
-    new RegExp('<c r="' + escaped + '"(?=[\\s"/>])[^/]*/>'),
+    new RegExp('<c r="' + escaped + '"(?=[\\s"/])[^/]*/>'),
     () => { patched = true; return cellXml; }
   );
   if (!patched) {
     sheet = sheet.replace(
-      new RegExp('<c r="' + escaped + '"(?=[\\s"/>])[^>/]*>[\\s\\S]*?<\\/c>'),
+      new RegExp('<c r="' + escaped + '"(?=[\\s"/])[^>/]*>[\\s\\S]*?<\\/c>'),
       () => { patched = true; return cellXml; }
     );
   }
@@ -3234,7 +3234,7 @@ function _patchCellDate(sheet, cellRef, serialVal, dateStyleIdx) {
     sheet = sheet.replace(
       new RegExp('(<row r="' + rowNum + '"(?=[\\s"])[^>]*>)([\\s\\S]*?)(</row>)'),
       (whole, open, inner, close) => {
-        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/>])', 'g');
+        const insertBefore = new RegExp('<c r="([A-Z]+)' + rowNum + '"(?=[\\s"/])', 'g');
         let inserted = false;
         const newInner = inner.replace(insertBefore, (m2, existCol) => {
           if (!inserted && colIdx(existCol) > colIdx(col)) {
@@ -3409,12 +3409,12 @@ async function exportExcel() {
         s2 = _patchCellDate(s2, `B${row}`, _dateSerial(r.date), _dsIdx);
         s2 = pc(s2, `C${row}`, r.type     || null);
         s2 = pc(s2, `D${row}`, r.summary  || null);
-        s2 = pc(s2, `E${row}`, r.resolution || null);
+        // E = IF formula (جاري الحل / تم الحل) — computed from dates, leave for Excel
         s2 = _patchCellDate(s2, `F${row}`, _dateSerial(r.resolve_date), _dsIdx);
         s2 = pc(s2, `G${row}`, r.feedback || null);
         s2 = _patchCellDate(s2, `H${row}`, _dateSerial(r.feedback_date), _dsIdx);
-        s2 = pc(s2, `I${row}`, r.immediate  || 'لا');
-        s2 = pc(s2, `J${row}`, r.hr72       || 'لا');
+        // I = IF formula (حل فوري نعم/لا) — computed from K col, leave for Excel
+        // J = IF formula (حل خلال 72 ساعة نعم/لا) — computed from duration, leave for Excel
       });
       putSheet('سجل الشكاوى', s2);
     }
@@ -3484,7 +3484,7 @@ async function exportExcel() {
         // L = formula — leave as-is
         s4 = pc(s4, `M${row}`, r.outcome      || null);
         s4 = pc(s4, `N${row}`, r.doc_complete || null);
-        s4 = pc(s4, `O${row}`, r.month        || null);
+        // O = TEXT(date,"mmm-yyyy") formula — computed from D col, leave for Excel
       });
 
       const sortedDrills = drills.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -3498,13 +3498,13 @@ async function exportExcel() {
         s4 = pc(s4, `F${row}`, _timeSerial(r.code_time));
         s4 = pc(s4, `G${row}`, _timeSerial(r.start_time));
         s4 = pc(s4, `H${row}`, _timeSerial(r.team_time));
-        // I = formula — leave as-is
+        // I = formula (H-F response time) — leave for Excel
         s4 = pc(s4, `J${row}`, null);
         s4 = pc(s4, `K${row}`, null);
-        s4 = pc(s4, `L${row}`, null); // no CPR end time for drills -> leave empty
+        // L = formula (K-G duration) — leave for Excel
         s4 = pc(s4, `M${row}`, null);
         s4 = pc(s4, `N${row}`, null);
-        s4 = pc(s4, `O${row}`, r.month || null);
+        // O = TEXT(date,"mmm-yyyy") formula — leave for Excel
       });
 
       putSheet('الإفاقة القلبية', s4);
