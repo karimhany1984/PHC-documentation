@@ -1,4 +1,4 @@
-const CACHE_NAME = 'phc-webapp-v69';
+const CACHE_NAME = 'phc-webapp-v70';
 const REPO_BASE = 'https://karimhany1984.github.io/PHC-documentation';
 const STATIC_ASSETS = [
   '/',
